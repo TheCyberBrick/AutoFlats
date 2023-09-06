@@ -57,9 +57,36 @@ namespace AutoFlats
             public Axis Axis { get; set; }
         }
 
+        private enum StackingMethod
+        {
+            Siril
+        }
+
+        [Verb("stack", HelpText = "Integrates the current set of flats into a single stacked and calibrated master flat.")]
+        private class StackOptions : StatefulOptions
+        {
+            [Option("method", HelpText = "Stacking method/program to be used for stacking and calibrating the flat frames.")]
+            public StackingMethod StackingMethod { get; set; } = StackingMethod.Siril;
+
+            [Option(HelpText = "Path to command line application to be used for stacking. For example, if Siril is used as stacking method then this must point to siril-cli.exe (e.g. \"C:\\Program Files\\Siril\\bin\\siril-cli.exe\").")]
+            public string ApplicationPath { get; set; } = "C:\\Program Files\\Siril\\bin\\siril-cli.exe";
+
+            [Option(Required = true, HelpText = "Path to flat frames. Must be a directory containing all flats. The flats may be located in subdirectories.")]
+            public IEnumerable<string> Flats { get; set; }
+
+            [Option(HelpText = "Path to dark(s) used for calibrating the flat frames. Can be a directory or FITS file. Calibration is skipped if none specified.")]
+            public IEnumerable<string>? Darks { get; set; }
+
+            [Option("exptol", Default = 5.0f, HelpText = "Exposure time tolerance in seconds. Used for matching darks to flats during calibration.")]
+            public float ExposureTolerance { get; set; }
+
+            [Option(Default = false, HelpText = "If set, only the master flat is kept and the other flat frames are deleted.")]
+            public bool KeepOnlyMasterFlat { get; set; }
+        }
+
         public static int Main(string[] args)
         {
-            return Parser.Default.ParseArguments<InitOptions, TerminateOptions, ProceedOptions, FilterOptions, RotationOptions, BinningOptions>(args)
+            return Parser.Default.ParseArguments<InitOptions, TerminateOptions, ProceedOptions, FilterOptions, RotationOptions, BinningOptions, StackOptions>(args)
                 .MapResult(
                 (InitOptions opts) => Init(opts),
                 (TerminateOptions opts) => Terminate(opts),
@@ -67,6 +94,7 @@ namespace AutoFlats
                 (FilterOptions opts) => Filter(opts),
                 (RotationOptions opts) => Rotation(opts),
                 (BinningOptions opts) => Binning(opts),
+                (StackOptions opts) => Stack(opts),
                 errs => 1);
         }
 
@@ -187,6 +215,26 @@ namespace AutoFlats
             {
                 var (bx, by) = autoflats.GetCurrentBinning();
                 Console.WriteLine(opts.Axis == Axis.X ? bx : by);
+            });
+        }
+
+        private static int Stack(StackOptions opts)
+        {
+            return Run(opts, false, autoflats =>
+            {
+                Stacker stacker;
+                switch (opts.StackingMethod)
+                {
+                    case StackingMethod.Siril:
+                        stacker = new SirilStacker(opts.ApplicationPath);
+                        break;
+                    default:
+                        throw new Exception($"Unknown stacking method {opts.StackingMethod}");
+                }
+
+                autoflats.Stack(stacker, opts.Flats, opts.Darks, opts.ExposureTolerance, opts.KeepOnlyMasterFlat);
+
+                Console.WriteLine("OK");
             });
         }
     }
