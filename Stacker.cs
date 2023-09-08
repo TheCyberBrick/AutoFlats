@@ -2,6 +2,6 @@
 {
     public interface Stacker
     {
-        void Stack(AutoFlats.FlatsSet set, IEnumerable<string> flats, Func<string, string>? flatDarkMap);
+        string Stack(AutoFlats.FlatsSet set, IReadOnlyList<string> flats, Func<string, string>? darkMap);
     }
 }

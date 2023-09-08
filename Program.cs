@@ -82,11 +82,60 @@ namespace AutoFlats
 
             [Option(Default = false, HelpText = "If set, only the master flat is kept and the other flat frames are deleted.")]
             public bool KeepOnlyMasterFlat { get; set; }
+
+            [Option(Default = "", HelpText = "Prefix added to the output file.")]
+            public string OutputPrefix { get; set; } = "";
+
+            [Option(Default = "", HelpText = "Suffix added to the output file.")]
+            public string OutputSuffix { get; set; } = "";
+        }
+
+        [Verb("masterFlat", HelpText = "Returns the path of the stacked master flat of the current set of flats.")]
+        private class MasterFlatOptions : StatefulOptions
+        {
+        }
+
+        private enum CalibrationMethod
+        {
+            Siril
+        }
+
+        [Verb("calibrate", HelpText = "Calibrates all lights matching the current set of flats with a stacked master flat.")]
+        private class CalibrateOptions : StatefulOptions
+        {
+            [Option("method", HelpText = "Stacking method/program to be used for calibrating the light frames.")]
+            public CalibrationMethod CalibrationMethod { get; set; } = CalibrationMethod.Siril;
+
+            [Option(HelpText = "Path to command line application to be used for calibration. For example, if Siril is used as calibration method then this must point to siril-cli.exe (e.g. \"C:\\Program Files\\Siril\\bin\\siril-cli.exe\").")]
+            public string ApplicationPath { get; set; } = "C:\\Program Files\\Siril\\bin\\siril-cli.exe";
+
+            [Option(Required = true, HelpText = "Path to light frames. Must be a directory containing all lights. The lights may be located in subdirectories.")]
+            public IEnumerable<string> Lights { get; set; }
+
+            [Option(Required = true, HelpText = "Path to dark(s) used for calibrating the light frames. Can be a directory or FITS file.")]
+            public IEnumerable<string> Darks { get; set; }
+
+            [Option("exptol", Default = 5.0f, HelpText = "Exposure time tolerance in seconds. Used for matching darks to lights during calibration.")]
+            public float ExposureTolerance { get; set; }
+
+            [Option(Default = false, HelpText = "If set, only the calibrated lights are kept and the other light frames are deleted.")]
+            public bool KeepOnlyCalibratedLights { get; set; }
+
+            [Option(Default = "calibrated/", HelpText = "Prefix added to the output file(s).")]
+            public string OutputPrefix { get; set; } = "";
+
+            [Option(Default = "", HelpText = "Suffix added to the output file(s).")]
+            public string OutputSuffix { get; set; } = "";
+        }
+
+        [Verb("calibratedLights", HelpText = "Returns the paths of the calibrated lights of the current set of flats.")]
+        private class CalibratedLightsOptions : StatefulOptions
+        {
         }
 
         public static int Main(string[] args)
         {
-            return Parser.Default.ParseArguments<InitOptions, TerminateOptions, ProceedOptions, FilterOptions, RotationOptions, BinningOptions, StackOptions>(args)
+            return Parser.Default.ParseArguments<InitOptions, TerminateOptions, ProceedOptions, FilterOptions, RotationOptions, BinningOptions, StackOptions, MasterFlatOptions, CalibrateOptions, CalibratedLightsOptions>(args)
                 .MapResult(
                 (InitOptions opts) => Init(opts),
                 (TerminateOptions opts) => Terminate(opts),
@@ -95,6 +144,9 @@ namespace AutoFlats
                 (RotationOptions opts) => Rotation(opts),
                 (BinningOptions opts) => Binning(opts),
                 (StackOptions opts) => Stack(opts),
+                (MasterFlatOptions opts) => MasterFlat(opts),
+                (CalibrateOptions opts) => Calibrate(opts),
+                (CalibratedLightsOptions opts) => CalibratedLights(opts),
                 errs => 1);
         }
 
@@ -232,9 +284,58 @@ namespace AutoFlats
                         throw new Exception($"Unknown stacking method {opts.StackingMethod}");
                 }
 
-                autoflats.Stack(stacker, opts.Flats, opts.Darks, opts.ExposureTolerance, opts.KeepOnlyMasterFlat);
+                autoflats.Stack(stacker, opts.Flats, opts.Darks, opts.ExposureTolerance, opts.KeepOnlyMasterFlat, opts.OutputPrefix, opts.OutputSuffix);
 
                 Console.WriteLine("OK");
+            });
+        }
+
+        private static int MasterFlat(MasterFlatOptions opts)
+        {
+            return Run(opts, false, autoflats =>
+            {
+                var masterFlat = autoflats.GetCurrentMasterFlat();
+                if (masterFlat == null)
+                {
+                    throw new Exception("There is no stacked master flat");
+                }
+                Console.WriteLine(masterFlat);
+            });
+        }
+
+        private static int Calibrate(CalibrateOptions opts)
+        {
+            return Run(opts, false, autoflats =>
+            {
+                Calibrator calibrator;
+                switch (opts.CalibrationMethod)
+                {
+                    case CalibrationMethod.Siril:
+                        calibrator = new SirilCalibrator(opts.ApplicationPath);
+                        break;
+                    default:
+                        throw new Exception($"Unknown calibration method {opts.CalibrationMethod}");
+                }
+
+                autoflats.Calibrate(calibrator, opts.Lights, opts.Darks, opts.ExposureTolerance, opts.KeepOnlyCalibratedLights, opts.OutputPrefix, opts.OutputSuffix);
+
+                Console.WriteLine("OK");
+            });
+        }
+
+        private static int CalibratedLights(CalibratedLightsOptions opts)
+        {
+            return Run(opts, false, autoflats =>
+            {
+                var calibratedLights = autoflats.GetCurrentCalibratedLights();
+                if (calibratedLights.Count == 0)
+                {
+                    throw new Exception("There are no calibrated lights");
+                }
+                foreach (var calibratedLight in calibratedLights)
+                {
+                    Console.WriteLine(calibratedLight);
+                }
             });
         }
     }

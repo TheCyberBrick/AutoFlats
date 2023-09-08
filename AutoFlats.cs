@@ -1,8 +1,6 @@
 ﻿using Newtonsoft.Json;
 using nom.tam.fits;
 using System.Data;
-using System.Globalization;
-using System.Text.RegularExpressions;
 
 namespace AutoFlats
 {
@@ -30,11 +28,13 @@ namespace AutoFlats
 
             [JsonProperty(PropertyName = "count", NullValueHandling = NullValueHandling.Ignore)]
             public int Count { get; set; } = 0;
-        }
 
-        public record struct Binning(
-            [JsonProperty(PropertyName = "x", Required = Required.Always)] int X,
-            [JsonProperty(PropertyName = "y", Required = Required.Always)] int Y);
+            [JsonProperty(PropertyName = "masterFlat", NullValueHandling = NullValueHandling.Ignore)]
+            public string? MasterFlat { get; set; }
+
+            [JsonProperty(PropertyName = "calibratedLights", NullValueHandling = NullValueHandling.Ignore)]
+            public List<string> CalibratedLights { get; set; } = new();
+        }
 
         private class State
         {
@@ -49,9 +49,28 @@ namespace AutoFlats
 
             [JsonProperty(PropertyName = "binning", NullValueHandling = NullValueHandling.Ignore)]
             public bool Binning { get; set; } = false;
-        }
 
-        public record struct FitsInfo(string Filter, float Rotation, Binning Binning, float Exposure, int Width, int Height);
+            [JsonIgnore]
+            public FitsProperties RequiredFlatsProperties
+            {
+                get
+                {
+                    FitsProperties properties = FitsProperties.Filter;
+
+                    if (RotationTolerance < 180.0f)
+                    {
+                        properties |= FitsProperties.Rotation;
+                    }
+
+                    if (Binning)
+                    {
+                        properties |= FitsProperties.Binning;
+                    }
+
+                    return properties;
+                }
+            }
+        }
 
         private State state = new();
 
@@ -128,14 +147,31 @@ namespace AutoFlats
             FindFlatsSets(paths);
         }
 
+        private FlatsSet GetFlatsSetForFile(string file)
+        {
+            return new FlatsSet(FitsFileUtils.GetFitsInfoForFile(file, state.RequiredFlatsProperties));
+        }
+
+        private IEnumerable<string> FindOriginalFitsFiles(IEnumerable<string> paths)
+        {
+            static bool isExcluded(FlatsSet set, string file)
+            {
+                if (set.MasterFlat != null && Path.GetFullPath(set.MasterFlat) == Path.GetFullPath(file))
+                {
+                    return true;
+                }
+                return set.CalibratedLights.Any(light => Path.GetFullPath(light) == Path.GetFullPath(file));
+            }
+            return FitsFileUtils.FindFitsFiles(paths).Where(file => !state.FlatsSets.Any(set => isExcluded(set, file)));
+        }
+
         private void FindFlatsSets(IEnumerable<string> paths)
         {
-            var files = FindFitsFiles(paths);
+            var files = FindOriginalFitsFiles(paths);
 
             foreach (var file in files)
             {
-                GetFitsInfoForFile(file, true, state.RotationTolerance < 180.0f, state.Binning, false, true, out var info);
-                var fileFlatsSet = new FlatsSet(info);
+                var fileFlatsSet = GetFlatsSetForFile(file);
 
                 bool hasMatchingFlatsSet = false;
 
@@ -184,209 +220,6 @@ namespace AutoFlats
             }
 
             return true;
-        }
-
-        private bool GetFitsInfoForFile(string file, bool requireFilter, bool requireRotation, bool requireBinning, bool requireExposure, bool throwOnMissingKeyword, out FitsInfo info)
-        {
-            info = new();
-
-            try
-            {
-                var fs = new FileStream(file, FileMode.Open, FileAccess.ReadWrite);
-
-                var cout = Console.Out;
-                var cerr = Console.Error;
-
-                // Temporarily disabling console output because
-                // CSharpFits seems to print out debug stuff
-                Console.SetOut(TextWriter.Null);
-                Console.SetError(TextWriter.Null);
-
-                Fits? fits = null;
-
-                try
-                {
-                    fits = new Fits(fs);
-
-                    fits.Read();
-
-                    BasicHDU hdu = fits.GetHDU(0);
-                    Header header = hdu.Header;
-
-                    int width = header.GetIntValue("NAXIS1", -1);
-                    if (width < 0)
-                    {
-                        if (throwOnMissingKeyword)
-                        {
-                            throw new Exception($"Missing NAXIS1 keyword in FITS file {file}");
-                        }
-                        else
-                        {
-                            return false;
-                        }
-                    }
-
-                    int height = header.GetIntValue("NAXIS2", -1);
-                    if (height < 0)
-                    {
-                        if (throwOnMissingKeyword)
-                        {
-                            throw new Exception($"Missing NAXIS2 keyword in FITS file {file}");
-                        }
-                        else
-                        {
-                            return false;
-                        }
-                    }
-
-                    string filter = header.GetStringValue("FILTER");
-                    if (filter == null && requireFilter)
-                    {
-                        if (throwOnMissingKeyword)
-                        {
-                            throw new Exception($"Missing FILTER keyword in FITS file {file}");
-                        }
-                        else
-                        {
-                            return false;
-                        }
-                    }
-
-                    double rotation = 0;
-                    HeaderCard rotCard = header.FindCard("ROTATANG");
-                    if (rotCard == null)
-                    {
-                        rotCard = header.FindCard("ROTATOR");
-                    }
-                    if (rotCard != null && rotCard.Value != null && double.TryParse(rotCard.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var rot))
-                    {
-                        rotation = rot;
-                    }
-                    else if (requireRotation)
-                    {
-                        if (throwOnMissingKeyword)
-                        {
-                            throw new Exception($"Missing ROTATANG / ROTATOR keyword in FITS file {file}");
-                        }
-                        else
-                        {
-                            return false;
-                        }
-                    }
-
-                    int bx = header.GetIntValue("XBINNING", 0);
-                    if (bx == 0 && requireBinning)
-                    {
-                        if (throwOnMissingKeyword)
-                        {
-                            throw new Exception($"Missing XBINNING keyword in FITS file {file}");
-                        }
-                        else
-                        {
-                            return false;
-                        }
-                    }
-
-                    int by = header.GetIntValue("YBINNING", 0);
-                    if (by == 0 && requireBinning)
-                    {
-                        if (throwOnMissingKeyword)
-                        {
-                            throw new Exception($"Missing YBINNING keyword in FITS file {file}");
-                        }
-                        else
-                        {
-                            return false;
-                        }
-                    }
-
-                    double exposure = 0;
-                    HeaderCard exposureCard = header.FindCard("EXPOSURE");
-                    if (exposureCard == null)
-                    {
-                        exposureCard = header.FindCard("EXPTIME");
-                    }
-                    if (exposureCard != null && exposureCard.Value != null && double.TryParse(exposureCard.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var exp))
-                    {
-                        exposure = exp;
-                    }
-                    else if (requireExposure)
-                    {
-                        if (throwOnMissingKeyword)
-                        {
-                            throw new Exception($"Missing EXPOSURE / EXPTIME keyword in FITS file {file}");
-                        }
-                        else
-                        {
-                            return false;
-                        }
-                    }
-
-                    info = new FitsInfo()
-                    {
-                        Filter = filter,
-                        Rotation = (float)rotation,
-                        Binning = new(bx, by),
-                        Exposure = (float)exposure,
-                        Width = width,
-                        Height = height
-                    };
-                    return true;
-                }
-                catch (Exception ex)
-                {
-                    throw new Exception($"Cannot parse FITS file {file}: {ex.Message}", ex);
-                }
-                finally
-                {
-                    Console.SetOut(cout);
-                    Console.SetError(cerr);
-
-                    fits?.Close();
-                    fs.Close();
-                }
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Cannot read FITS file {file}: {ex.Message}", ex);
-            }
-        }
-
-        private IEnumerable<string> FindFitsFiles(IEnumerable<string> paths)
-        {
-            HashSet<string> files = new();
-
-            Regex extensionPattern = new("\\.fit|\\.fits|\\.fts", RegexOptions.IgnoreCase);
-
-            foreach (string path in paths)
-            {
-                var attr = File.GetAttributes(path);
-
-                if (Directory.Exists(path))
-                {
-                    foreach (string file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories).Where(file => extensionPattern.IsMatch(Path.GetExtension(file) ?? "")))
-                    {
-                        files.Add(file);
-                    }
-                }
-                else if (File.Exists(path))
-                {
-                    if (extensionPattern.IsMatch(Path.GetExtension(path) ?? ""))
-                    {
-                        files.Add(path);
-                    }
-                    else
-                    {
-                        throw new Exception($"Invalid file type {path}");
-                    }
-                }
-                else
-                {
-                    throw new Exception($"Unknown path {path}");
-                }
-            }
-
-            return files;
         }
 
         public bool Proceed()
@@ -439,30 +272,30 @@ namespace AutoFlats
             return GetCurrentFlatsSet().Binning;
         }
 
-        private Dictionary<string, string> FindMatchingDarks(IEnumerable<string> flats, IEnumerable<string> darks, float exposureTolerance)
+        public Dictionary<string, string> FindMatchingDarks(IEnumerable<string> lights, IEnumerable<string> darks, float exposureTolerance)
         {
-            Dictionary<string, FitsInfo> flatsInfo = new();
-            foreach (var flat in flats)
+            Dictionary<string, FitsInfo> lightsInfo = new();
+            foreach (var light in lights)
             {
-                if (GetFitsInfoForFile(flat, false, false, false, true, false, out var info))
+                if (FitsFileUtils.TryGetFitsInfoForFile(light, FitsProperties.Exposure, out var info))
                 {
-                    flatsInfo.Add(flat, info);
+                    lightsInfo.Add(light, info);
                 }
             }
 
             Dictionary<string, FitsInfo> darksInfo = new();
             foreach (var dark in darks)
             {
-                if (GetFitsInfoForFile(dark, false, false, false, true, false, out var info))
+                if (FitsFileUtils.TryGetFitsInfoForFile(dark, FitsProperties.Exposure, out var info))
                 {
                     darksInfo.Add(dark, info);
                 }
             }
 
             Dictionary<string, string> matchedDarks = new();
-            foreach (var flat in flats)
+            foreach (var light in lights)
             {
-                var flatInfo = flatsInfo[flat];
+                var lightInfo = lightsInfo[light];
 
                 string? bestDark = null;
                 float bestDarkExposureDiff = 0;
@@ -471,8 +304,8 @@ namespace AutoFlats
                 {
                     var darkInfo = darksInfo[dark];
 
-                    var expDiff = Math.Abs(flatInfo.Exposure - darkInfo.Exposure);
-                    if (flatInfo.Width == darkInfo.Width && flatInfo.Height == darkInfo.Height && expDiff <= exposureTolerance && (bestDark == null || expDiff < bestDarkExposureDiff))
+                    var expDiff = Math.Abs(lightInfo.Exposure - darkInfo.Exposure);
+                    if (lightInfo.Width == darkInfo.Width && lightInfo.Height == darkInfo.Height && expDiff <= exposureTolerance && (bestDark == null || expDiff < bestDarkExposureDiff))
                     {
                         bestDark = dark;
                         bestDarkExposureDiff = expDiff;
@@ -481,41 +314,38 @@ namespace AutoFlats
 
                 if (bestDark != null)
                 {
-                    matchedDarks.Add(flat, bestDark);
+                    matchedDarks.Add(light, bestDark);
                 }
                 else
                 {
-                    throw new Exception($"Flat file {flat} has no matching dark");
+                    throw new Exception($"File {light} has no matching dark");
                 }
             }
 
             return matchedDarks;
         }
 
-        private List<string> GetFlatsForFlatsSet(IEnumerable<string> flats, FlatsSet set)
+        public List<string> GetFilesForFlatsSet(IEnumerable<string> files, FlatsSet set)
         {
-            List<string> matchingFlats = new();
+            List<string> matchingFiles = new();
 
-            foreach (var flat in flats)
+            foreach (var file in files)
             {
-                if (GetFitsInfoForFile(flat, false, state.RotationTolerance < 180.0f, state.Binning, false, false, out var info))
-                {
-                    var flatsSet = new FlatsSet(info);
+                var flatsSet = GetFlatsSetForFile(file);
 
-                    if (CompareFlatsSets(flatsSet, set, state.RotationTolerance, state.Binning))
-                    {
-                        matchingFlats.Add(flat);
-                    }
+                if (CompareFlatsSets(flatsSet, set, state.RotationTolerance, state.Binning))
+                {
+                    matchingFiles.Add(file);
                 }
             }
 
-            return matchingFlats;
+            return matchingFiles;
         }
 
-        public void Stack(Stacker stacker, IEnumerable<string> flatsPaths, IEnumerable<string>? darksPaths, float exposureTolerance, bool keepOnlyMasterFlat)
+        public void Stack(Stacker stacker, IEnumerable<string> flatsPaths, IEnumerable<string>? darksPaths, float exposureTolerance, bool keepOnlyMasterFlat, string outputPrefix, string outputSuffix)
         {
             var currentFlatsSet = GetCurrentFlatsSet();
-            var flats = GetFlatsForFlatsSet(FindFitsFiles(flatsPaths), currentFlatsSet);
+            var flats = GetFilesForFlatsSet(FindOriginalFitsFiles(flatsPaths), currentFlatsSet);
 
             if (!flats.Any())
             {
@@ -523,24 +353,17 @@ namespace AutoFlats
                 return;
             }
 
-            string? parentDir = null;
-            foreach (var flat in flats)
-            {
-                var flatParentDir = Path.GetDirectoryName(flat);
+            var darks = darksPaths != null ? FindMatchingDarks(flats, FindOriginalFitsFiles(darksPaths), exposureTolerance) : null;
 
-                if (parentDir != null && parentDir != flatParentDir)
-                {
-                    throw new Exception($"Flat {flat} is not in the same directory {flatParentDir} as the other flats");
-                }
-
-                parentDir = flatParentDir;
-            }
-
-            var darks = darksPaths != null ? FindMatchingDarks(flats, FindFitsFiles(darksPaths), exposureTolerance) : null;
-
+            string masterFlat;
             try
             {
-                stacker.Stack(currentFlatsSet, flats, darks != null ? (flat => darks[flat]) : null);
+                masterFlat = stacker.Stack(currentFlatsSet, flats, darks != null ? (flat => darks[flat]) : null);
+
+                if (!File.Exists(masterFlat))
+                {
+                    throw new Exception($"Stacked master flat {masterFlat} not found");
+                }
             }
             catch (Exception ex)
             {
@@ -561,6 +384,127 @@ namespace AutoFlats
                     }
                 }
             }
+
+            try
+            {
+                var masterFlatDir = Path.GetDirectoryName(masterFlat) ?? throw new Exception($"Couldn't find master flat {masterFlat} parent directory");
+                var masterFlatFileName = Path.GetFileNameWithoutExtension(masterFlat);
+
+                var newMasterFlatPath = Path.Combine(masterFlatDir, outputPrefix + masterFlatFileName + outputSuffix + ".fit");
+                var newMasterFlatDir = Path.GetDirectoryName(newMasterFlatPath) ?? throw new Exception($"Couldn't find master flat {newMasterFlatPath} parent directory");
+
+                if (newMasterFlatDir != masterFlatDir && !newMasterFlatDir.IsSubPathOf(masterFlatDir))
+                {
+                    throw new Exception($"Invalid output prefix {outputPrefix} or suffix {outputSuffix}");
+                }
+
+                Directory.CreateDirectory(newMasterFlatDir);
+
+                File.Move(masterFlat, newMasterFlatPath, true);
+
+                // Save to state
+                currentFlatsSet.MasterFlat = Path.GetFullPath(newMasterFlatPath);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Failed moving master flat {masterFlat}: {ex.Message}");
+            }
+        }
+
+        public string? GetCurrentMasterFlat()
+        {
+            return GetCurrentFlatsSet().MasterFlat;
+        }
+
+        public void Calibrate(Calibrator calibrator, IEnumerable<string> lightsPaths, IEnumerable<string> darksPaths, float exposureTolerance, bool keepOnlyCalibratedLights, string outputPrefix, string outputSuffix)
+        {
+            var currentFlatsSet = GetCurrentFlatsSet();
+            var lights = GetFilesForFlatsSet(FindOriginalFitsFiles(lightsPaths), currentFlatsSet);
+
+            if (!lights.Any())
+            {
+                // Nothing to calibrate
+                return;
+            }
+
+            var flat = GetCurrentMasterFlat();
+            if (flat == null)
+            {
+                throw new Exception("There is no master flat");
+            }
+
+            var darks = FindMatchingDarks(lights, FindOriginalFitsFiles(darksPaths), exposureTolerance);
+
+            List<string> calibratedLights;
+            try
+            {
+                calibratedLights = calibrator.Calibrate(currentFlatsSet, lights, light => darks[light], flat);
+
+                foreach (var calibratedLight in calibratedLights)
+                {
+                    if (!File.Exists(calibratedLight))
+                    {
+                        throw new Exception($"Calibrated light {calibratedLight} not found");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Failed calibrating lights: {ex.Message}");
+            }
+
+            if (keepOnlyCalibratedLights)
+            {
+                foreach (var light in lights)
+                {
+                    try
+                    {
+                        File.Delete(light);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed deleting light after calibration: {ex.Message}");
+                    }
+                }
+            }
+
+            currentFlatsSet.CalibratedLights.Clear();
+
+            for (int i = 0; i < lights.Count; ++i)
+            {
+                var light = lights[i];
+                var calibratedLight = calibratedLights[i];
+
+                try
+                {
+                    var lightDir = Path.GetDirectoryName(light) ?? throw new Exception($"Couldn't find light {light} parent directory");
+                    var lightFileName = Path.GetFileNameWithoutExtension(light);
+
+                    var newLightPath = Path.Combine(lightDir, outputPrefix + lightFileName + outputSuffix + ".fit");
+                    var newLightDir = Path.GetDirectoryName(newLightPath) ?? throw new Exception($"Couldn't find light {newLightPath} parent directory");
+
+                    if (newLightDir != lightDir && !newLightDir.IsSubPathOf(lightDir))
+                    {
+                        throw new Exception($"Invalid output prefix {outputPrefix} or suffix {outputSuffix}");
+                    }
+
+                    Directory.CreateDirectory(newLightDir);
+
+                    File.Move(calibratedLight, newLightPath, true);
+
+                    // Save to state
+                    currentFlatsSet.CalibratedLights.Add(Path.GetFullPath(newLightPath));
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception($"Failed moving light {light}: {ex.Message}");
+                }
+            }
+        }
+
+        public IReadOnlyList<string> GetCurrentCalibratedLights()
+        {
+            return GetCurrentFlatsSet().CalibratedLights;
         }
     }
 }
