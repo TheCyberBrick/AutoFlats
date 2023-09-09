@@ -88,6 +88,9 @@ namespace AutoFlats
 
             [Option(Default = "", HelpText = "Suffix added to the output file.")]
             public string OutputSuffix { get; set; } = "";
+
+            [Option(Default = false, HelpText = "If set, stacking is skipped if darks are missing instead of aborting with an error.")]
+            public bool skipIfMissingDarks { get; set; }
         }
 
         [Verb("masterFlat", HelpText = "Returns the path of the stacked master flat of the current set of flats.")]
@@ -126,6 +129,12 @@ namespace AutoFlats
 
             [Option(Default = "", HelpText = "Suffix added to the output file(s).")]
             public string OutputSuffix { get; set; } = "";
+
+            [Option(Default = false, HelpText = "If set, calibration is skipped if darks are missing instead of aborting with an error.")]
+            public bool skipIfMissingDarks { get; set; }
+
+            [Option(Default = false, HelpText = "If set, calibration is skipped if master flat is missing instead of aborting with an error.")]
+            public bool skipIfMissingFlats { get; set; }
         }
 
         [Verb("calibratedLights", HelpText = "Returns the paths of the calibrated lights of the current set of flats.")]
@@ -284,7 +293,17 @@ namespace AutoFlats
                         throw new Exception($"Unknown stacking method {opts.StackingMethod}");
                 }
 
-                autoflats.Stack(stacker, opts.Flats, opts.Darks, opts.ExposureTolerance, opts.KeepOnlyMasterFlat, opts.OutputPrefix, opts.OutputSuffix);
+                try
+                {
+                    autoflats.Stack(stacker, opts.Flats, opts.Darks, opts.ExposureTolerance, opts.KeepOnlyMasterFlat, opts.OutputPrefix, opts.OutputSuffix);
+                }
+                catch (CalibrationFrameNotFoundException ex)
+                {
+                    if (!(ex.Type == CalibrationFrameNotFoundException.FrameType.Dark && opts.skipIfMissingDarks))
+                    {
+                        throw;
+                    }
+                }
 
                 Console.WriteLine("OK");
             });
@@ -317,7 +336,17 @@ namespace AutoFlats
                         throw new Exception($"Unknown calibration method {opts.CalibrationMethod}");
                 }
 
-                autoflats.Calibrate(calibrator, opts.Lights, opts.Darks, opts.ExposureTolerance, opts.KeepOnlyCalibratedLights, opts.OutputPrefix, opts.OutputSuffix);
+                try
+                {
+                    autoflats.Calibrate(calibrator, opts.Lights, opts.Darks, opts.ExposureTolerance, opts.KeepOnlyCalibratedLights, opts.OutputPrefix, opts.OutputSuffix);
+                }
+                catch (CalibrationFrameNotFoundException ex)
+                {
+                    if (!(ex.Type == CalibrationFrameNotFoundException.FrameType.Dark && opts.skipIfMissingDarks) && !(ex.Type == CalibrationFrameNotFoundException.FrameType.Flat && opts.skipIfMissingFlats))
+                    {
+                        throw;
+                    }
+                }
 
                 Console.WriteLine("OK");
             });

@@ -318,7 +318,7 @@ namespace AutoFlats
                 }
                 else
                 {
-                    throw new Exception($"File {light} has no matching dark");
+                    throw new CalibrationFrameNotFoundException(CalibrationFrameNotFoundException.FrameType.Dark, light, $"File {light} has no matching dark");
                 }
             }
 
@@ -430,7 +430,7 @@ namespace AutoFlats
             var flat = GetCurrentMasterFlat();
             if (flat == null)
             {
-                throw new Exception("There is no master flat");
+                throw new CalibrationFrameNotFoundException(CalibrationFrameNotFoundException.FrameType.Flat, null, "There is no master flat");
             }
 
             var darks = FindMatchingDarks(lights, FindOriginalFitsFiles(darksPaths), exposureTolerance);

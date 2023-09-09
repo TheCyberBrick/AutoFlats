@@ -99,7 +99,7 @@ namespace AutoFlats
                 }
                 else
                 {
-                    throw new Exception($"Failed mapping file {file} to file in sequence {sequenceName} in {workingDir}");
+                    throw new Exception($"Failed mapping file {file} (#{index}) to file in sequence {sequenceName} in {workingDir}");
                 }
             }
 

@@ -44,6 +44,7 @@ A simple CLI tool to facilitate the automatic creation of flat frames. It scans 
 |`--keeponlymasterflat` | If set, only the master flat is kept and the other flat frames are deleted. |
 |`--outputprefix` | Prefix added to the output file. |
 |`--outputsuffix` | Suffix added to the output file. |
+|`--skipifmissingdarks` | If set, stacking is skipped if darks are missing instead of aborting with an error. |
 ##### 2.7 Optional. `AutoFlats masterFlat`: Returns the path of the stacked master flat of the current set of flats
 | Argument (bold = required) | Description                   |
 |----------------------------|-------------------------------|
@@ -55,11 +56,13 @@ A simple CLI tool to facilitate the automatic creation of flat frames. It scans 
 |`--method <method>` | Stacking method/program to be used for calibrating the light frames. |
 |`--applicationpath <path>` | Path to command line application to be used for calibration. For example, if Siril is used as calibration method then this must point to siril-cli.exe (e.g. \"C:\\Program Files\\Siril\\bin\\siril-cli.exe\"). Default value points to the default install location of Siril. |
 |<b>`--lights <path>`</b> | Path to light frames. Must be a directory containing all lights. The lights may be located in subdirectories. |
-|<b>`--darks <path>`</b> | Path to dark(s) used for calibrating the light frames. Can be a directory or FITS file.. |
+|<b>`--darks <path>`</b> | Path to dark(s) used for calibrating the light frames. Can be a directory or FITS file. |
 |`--exptol <seconds>` | Exposure time tolerance in seconds. Used for matching darks to lights during calibration. Default: 5 seconds. |
 |`--keeponlycalibratedlights` | If set, only the calibrated lights are kept and the other light frames are deleted. |
 |`--outputprefix` | Prefix added to the output file(s). |
 |`--outputsuffix` | Suffix added to the output file(s). |
+|`--skipifmissingdarks` | If set, calibration is skipped if darks are missing instead of aborting with an error. |
+|`--skipifmissingflats` | If set, calibration is skipped if master flat is missing instead of aborting with an error. |
 
 #### Optional. `AutoFlats terminate`: Terminates the session early and deletes the state file.
 | Argument (bold = required) | Description                   |

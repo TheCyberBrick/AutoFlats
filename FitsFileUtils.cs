@@ -86,7 +86,7 @@ namespace AutoFlats
                     {
                         if (throwOnMissingKeyword)
                         {
-                            throw new Exception($"Missing NAXIS1 keyword in FITS file {file}");
+                            throw new KeywordNotFoundException(file, "NAXIS1", $"Missing NAXIS1 keyword in FITS file {file}");
                         }
                         else
                         {
@@ -99,7 +99,7 @@ namespace AutoFlats
                     {
                         if (throwOnMissingKeyword)
                         {
-                            throw new Exception($"Missing NAXIS2 keyword in FITS file {file}");
+                            throw new KeywordNotFoundException(file, "NAXIS2", $"Missing NAXIS2 keyword in FITS file {file}");
                         }
                         else
                         {
@@ -112,7 +112,7 @@ namespace AutoFlats
                     {
                         if (throwOnMissingKeyword)
                         {
-                            throw new Exception($"Missing FILTER keyword in FITS file {file}");
+                            throw new KeywordNotFoundException(file, "FILTER", $"Missing FILTER keyword in FITS file {file}");
                         }
                         else
                         {
@@ -134,7 +134,7 @@ namespace AutoFlats
                     {
                         if (throwOnMissingKeyword)
                         {
-                            throw new Exception($"Missing ROTATANG / ROTATOR keyword in FITS file {file}");
+                            throw new KeywordNotFoundException(file, "ROTATANG", $"Missing ROTATANG / ROTATOR keyword in FITS file {file}");
                         }
                         else
                         {
@@ -147,7 +147,7 @@ namespace AutoFlats
                     {
                         if (throwOnMissingKeyword)
                         {
-                            throw new Exception($"Missing XBINNING keyword in FITS file {file}");
+                            throw new KeywordNotFoundException(file, "XBINNING", $"Missing XBINNING keyword in FITS file {file}");
                         }
                         else
                         {
@@ -160,7 +160,7 @@ namespace AutoFlats
                     {
                         if (throwOnMissingKeyword)
                         {
-                            throw new Exception($"Missing YBINNING keyword in FITS file {file}");
+                            throw new KeywordNotFoundException(file, "YBINNING", $"Missing YBINNING keyword in FITS file {file}");
                         }
                         else
                         {
@@ -182,7 +182,7 @@ namespace AutoFlats
                     {
                         if (throwOnMissingKeyword)
                         {
-                            throw new Exception($"Missing EXPOSURE / EXPTIME keyword in FITS file {file}");
+                            throw new KeywordNotFoundException(file, "EXPOSURE", $"Missing EXPOSURE / EXPTIME keyword in FITS file {file}");
                         }
                         else
                         {
