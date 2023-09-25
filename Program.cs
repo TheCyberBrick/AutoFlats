@@ -90,7 +90,7 @@ namespace AutoFlats
             public string OutputSuffix { get; set; } = "";
 
             [Option(Default = false, HelpText = "If set, stacking is skipped if darks are missing instead of aborting with an error.")]
-            public bool skipIfMissingDarks { get; set; }
+            public bool SkipIfMissingDarks { get; set; }
         }
 
         [Verb("masterFlat", HelpText = "Returns the path of the stacked master flat of the current set of flats.")]
@@ -131,10 +131,10 @@ namespace AutoFlats
             public string OutputSuffix { get; set; } = "";
 
             [Option(Default = false, HelpText = "If set, calibration is skipped if darks are missing instead of aborting with an error.")]
-            public bool skipIfMissingDarks { get; set; }
+            public bool SkipIfMissingDarks { get; set; }
 
             [Option(Default = false, HelpText = "If set, calibration is skipped if master flat is missing instead of aborting with an error.")]
-            public bool skipIfMissingFlats { get; set; }
+            public bool SkipIfMissingFlats { get; set; }
         }
 
         [Verb("calibratedLights", HelpText = "Returns the paths of the calibrated lights of the current set of flats.")]
@@ -299,7 +299,7 @@ namespace AutoFlats
                 }
                 catch (CalibrationFrameNotFoundException ex)
                 {
-                    if (!(ex.Type == CalibrationFrameNotFoundException.FrameType.Dark && opts.skipIfMissingDarks))
+                    if (!(ex.Type == CalibrationFrameNotFoundException.FrameType.Dark && opts.SkipIfMissingDarks))
                     {
                         throw;
                     }
@@ -342,7 +342,7 @@ namespace AutoFlats
                 }
                 catch (CalibrationFrameNotFoundException ex)
                 {
-                    if (!(ex.Type == CalibrationFrameNotFoundException.FrameType.Dark && opts.skipIfMissingDarks) && !(ex.Type == CalibrationFrameNotFoundException.FrameType.Flat && opts.skipIfMissingFlats))
+                    if (!(ex.Type == CalibrationFrameNotFoundException.FrameType.Dark && opts.SkipIfMissingDarks) && !(ex.Type == CalibrationFrameNotFoundException.FrameType.Flat && opts.SkipIfMissingFlats))
                     {
                         throw;
                     }

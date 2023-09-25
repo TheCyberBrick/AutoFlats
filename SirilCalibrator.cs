@@ -30,7 +30,15 @@
                 writer.WriteLine($"cd \"{sequence.LightsWorkingDir}\"");
                 writer.WriteLine($"link {sequence.Name} -out=..");
                 writer.WriteLine($"cd \"..\"");
-                writer.WriteLine($"calibrate {sequence.Name} -dark={sequence.DarkName} -flat={sequence.FlatName} {calibrationParameters} -prefix={PREPROCESSED_SEQUENCE_PREFIX}");
+
+                if (sequence.Lights.Count > 1)
+                {
+                    writer.WriteLine($"calibrate {sequence.Name} -dark={sequence.DarkName} -flat={sequence.FlatName} {calibrationParameters} -prefix={PREPROCESSED_SEQUENCE_PREFIX}");
+                }
+                else
+                {
+                    writer.WriteLine($"calibrate_single {sequence.Name}_00001 -dark={sequence.DarkName} -flat={sequence.FlatName} {calibrationParameters} -prefix={PREPROCESSED_SEQUENCE_PREFIX}");
+                }
             }
         }
 

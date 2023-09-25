@@ -56,11 +56,11 @@ namespace AutoFlats
             }
         }
 
-        protected Dictionary<string, string> MapToSequenceFiles(IReadOnlyList<string> files, string workingDir, string sequenceName)
+        protected List<string> MapToSequenceFiles(string workingDir, string sequenceName)
         {
             var sequenceFileRegex = new Regex($"^{sequenceName}_?[0-9]+.{FILE_EXT}$", RegexOptions.None);
 
-            var sequenceFiles = new Dictionary<int, string>();
+            var sequenceFilesMap = new Dictionary<int, string>();
 
             foreach (string file in Directory.EnumerateFiles(workingDir, $"*.{FILE_EXT}", SearchOption.TopDirectoryOnly).Where(file => sequenceFileRegex.IsMatch(Path.GetFileName(file))))
             {
@@ -82,25 +82,46 @@ namespace AutoFlats
 
                 if (int.TryParse(new string(digits.ToArray()), NumberStyles.Integer, CultureInfo.InvariantCulture, out var nr))
                 {
-                    sequenceFiles.Add(nr, file);
+                    sequenceFilesMap.Add(nr, file);
                 }
             }
+
+            var sequenceFiles = new List<string>();
+
+            for (int index = 0; index < sequenceFilesMap.Count; ++index)
+            {
+                if (sequenceFilesMap.TryGetValue(index + 1, out var file))
+                {
+                    sequenceFiles.Add(file);
+                }
+                else
+                {
+                    throw new Exception($"Incomplete sequence {sequenceName} in {workingDir}. Missing file #{index + 1}");
+                }
+            }
+
+            return sequenceFiles;
+        }
+
+        protected Dictionary<string, string> MapToSequenceFiles(IReadOnlyList<string> files, string workingDir, string sequenceName)
+        {
+            var sequenceFiles = MapToSequenceFiles(workingDir, sequenceName);
 
             var sequenceFileMap = new Dictionary<string, string>();
 
             int index = 0;
             foreach (var file in files)
             {
-                ++index;
-
-                if (sequenceFiles.TryGetValue(index, out var sequenceFile))
+                if (index < sequenceFiles.Count)
                 {
-                    sequenceFileMap.Add(file, sequenceFile);
+                    sequenceFileMap.Add(file, sequenceFiles[index]);
                 }
                 else
                 {
-                    throw new Exception($"Failed mapping file {file} (#{index}) to file in sequence {sequenceName} in {workingDir}");
+                    throw new Exception($"Failed mapping file {file} (#{index + 1}) to file in sequence {sequenceName} in {workingDir}");
                 }
+
+                ++index;
             }
 
             return sequenceFileMap;
