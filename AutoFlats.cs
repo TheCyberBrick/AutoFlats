@@ -200,7 +200,7 @@ namespace AutoFlats
 
         private bool CompareFlatsSets(FlatsSet flatsSet1, FlatsSet flatsSet2, float rotationTolerance, bool binning)
         {
-            if (!flatsSet1.Filter.Equals(flatsSet2.Filter) || (binning && flatsSet1.Binning.Equals(flatsSet2.Binning)))
+            if (!flatsSet1.Filter.Equals(flatsSet2.Filter) || (binning && !flatsSet1.Binning.Equals(flatsSet2.Binning)))
             {
                 return false;
             }
