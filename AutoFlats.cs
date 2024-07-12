@@ -416,7 +416,7 @@ namespace AutoFlats
             return GetCurrentFlatsSet().MasterFlat;
         }
 
-        public void Calibrate(Calibrator calibrator, IEnumerable<string> lightsPaths, IEnumerable<string> darksPaths, float exposureTolerance, bool keepOnlyCalibratedLights, string outputPrefix, string outputSuffix)
+        public void Calibrate(Calibrator calibrator, IEnumerable<string> lightsPaths, IEnumerable<string> darksPaths, float exposureTolerance, bool copyHeaders, bool keepOnlyCalibratedLights, string outputPrefix, string outputSuffix)
         {
             var currentFlatsSet = GetCurrentFlatsSet();
             var lights = GetFilesForFlatsSet(FindOriginalFitsFiles(lightsPaths), currentFlatsSet);
@@ -451,6 +451,31 @@ namespace AutoFlats
             catch (Exception ex)
             {
                 throw new Exception($"Failed calibrating lights: {ex.Message}");
+            }
+
+            if (copyHeaders)
+            {
+                for (int i = 0; i < lights.Count; ++i)
+                {
+                    var light = lights[i];
+                    var calibratedLight = calibratedLights[i];
+
+                    // Some values image properties may be changed during calibration
+                    // so those must not be replaced
+                    var mergeExclusions = new HashSet<string>()
+                    {
+                        "BITPIX", "BSCALE", "BZERO", "NAXIS1", "NAXIS2", "ROWORDER"
+                    };
+
+                    try
+                    {
+                        FitsFileUtils.MergeFitsHeader(calibratedLight, light, mergeExclusions);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Failed copying header from {light} to {calibratedLight}: {ex.Message}", ex);
+                    }
+                }
             }
 
             if (keepOnlyCalibratedLights)

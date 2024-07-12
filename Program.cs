@@ -121,6 +121,9 @@ namespace AutoFlats
             [Option("exptol", Default = 5.0f, HelpText = "Exposure time tolerance in seconds. Used for matching darks to lights during calibration.")]
             public float ExposureTolerance { get; set; }
 
+            [Option(Default = true, HelpText = "If set, the original FITS header values are copied to the calibrated FITS files.")]
+            public bool CopyHeaders { get; set; }
+
             [Option(Default = false, HelpText = "If set, only the calibrated lights are kept and the other light frames are deleted.")]
             public bool KeepOnlyCalibratedLights { get; set; }
 
@@ -338,7 +341,7 @@ namespace AutoFlats
 
                 try
                 {
-                    autoflats.Calibrate(calibrator, opts.Lights, opts.Darks, opts.ExposureTolerance, opts.KeepOnlyCalibratedLights, opts.OutputPrefix, opts.OutputSuffix);
+                    autoflats.Calibrate(calibrator, opts.Lights, opts.Darks, opts.ExposureTolerance, opts.CopyHeaders, opts.KeepOnlyCalibratedLights, opts.OutputPrefix, opts.OutputSuffix);
                 }
                 catch (CalibrationFrameNotFoundException ex)
                 {
