@@ -220,46 +220,30 @@ namespace AutoFlats
             var calibratedFitsInfoMap = new Dictionary<string, FitsInfo>();
             var calibratedFileFlatsSetList = new List<(string File, FlatsSet FlatsSet)>();
 
-            FlatsSet? findMatchingFlatsSet(FlatsSet set)
-            {
-                foreach (var stateFlatsSet in state.FlatsSets)
-                {
-                    if (CompareFlatsSets(set, stateFlatsSet, state.RotationTolerance, state.FocusTolerance, state.Binning))
-                    {
-                        return stateFlatsSet;
-                    }
-                }
-                return null;
-            }
+            var unprocessedFiles = new List<string>();
+            var processedFiles = new List<string>();
 
             foreach (var (file, fitsInfo) in fileFitsInfos)
             {
                 var fileFlatsSet = new FlatsSet(fitsInfo);
-
-                FlatsSet? matchingFlatsSet = findMatchingFlatsSet(fileFlatsSet);
 
                 if (fitsInfo.IsCalibrated && fitsInfo.UncalibratedFileNameBase64 != null && fitsInfo.UncalibratedFileNameMD5 != null && fitsInfo.UncalibratedFileDataMD5 != null)
                 {
                     calibratedFitsInfoMap[fitsInfo.UncalibratedFileNameMD5.ToLowerInvariant()] = fitsInfo;
                     calibratedFileFlatsSetList.Add((file, fileFlatsSet));
                 }
-                else if (matchingFlatsSet != null)
-                {
-                    ++matchingFlatsSet.Count;
-                    fileFlatsSets[file] = matchingFlatsSet;
-                }
                 else
                 {
-                    fileFlatsSet.Count = 1;
                     fileFlatsSets[file] = fileFlatsSet;
-                    state.FlatsSets.Add(fileFlatsSet);
                 }
             }
 
-            foreach (var (file, fitsInfo) in fileFitsInfos)
+            foreach (var (file, _) in fileFitsInfos)
             {
-                if (fileFlatsSets.TryGetValue(file, out var fileFlatsSet))
+                if (fileFlatsSets.ContainsKey(file))
                 {
+                    bool isProcessed = false;
+
                     var fileName = Path.GetFileName(file);
                     var fileNameHash = FitsFileUtils.CalculateTextHash(fileName);
 
@@ -279,17 +263,58 @@ namespace AutoFlats
 
                             if (fileDataHash.ToLowerInvariant().Equals(calibratedFitsInfo.UncalibratedFileDataMD5.ToLowerInvariant()))
                             {
-                                fileFlatsSet.ProcessedLights.Add(file);
-
-                                --fileFlatsSet.Count;
-
-                                if (fileFlatsSet.Count <= 0)
-                                {
-                                    state.FlatsSets.Remove(fileFlatsSet);
-                                }
+                                isProcessed = true;
                             }
                         }
                     }
+
+                    if (isProcessed)
+                    {
+                        processedFiles.Add(file);
+                    }
+                    else
+                    {
+                        unprocessedFiles.Add(file);
+                    }
+                }
+            }
+
+            FlatsSet? findMatchingFlatsSet(FlatsSet set)
+            {
+                foreach (var stateFlatsSet in state.FlatsSets)
+                {
+                    if (CompareFlatsSets(set, stateFlatsSet, state.RotationTolerance, state.FocusTolerance, state.Binning))
+                    {
+                        return stateFlatsSet;
+                    }
+                }
+                return null;
+            }
+
+            foreach (var file in unprocessedFiles)
+            {
+                var fileFlatsSet = fileFlatsSets[file];
+
+                FlatsSet? matchingFlatsSet = findMatchingFlatsSet(fileFlatsSet);
+
+                if (matchingFlatsSet != null)
+                {
+                    ++matchingFlatsSet.Count;
+                }
+                else
+                {
+                    fileFlatsSet.Count = 1;
+                    state.FlatsSets.Add(fileFlatsSet);
+                }
+            }
+
+            foreach (var file in processedFiles)
+            {
+                FlatsSet? matchingFlatsSet = findMatchingFlatsSet(fileFlatsSets[file]);
+
+                if (matchingFlatsSet != null)
+                {
+                    matchingFlatsSet.ProcessedLights.Add(file);
                 }
             }
 
