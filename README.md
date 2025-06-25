@@ -11,10 +11,11 @@ A simple CLI tool to facilitate the automatic creation of flat frames. It scans 
 |`--db <path>` | Path to file where the state is stored. Must not yet exist, or be from a previous session. |
 |<b>`--files <path>`</b> | FITS file or directory to include. If this is a directory then it recursively scans for FITS files in the directory. |
 |`--rtol <degrees>`          | PA rotation tolerance in degrees. By default rotation is ignored. |
+|`--ftol <steps>`          | Focus position tolerance in steps. By default focus position is ignored. |
 |`--binning`       | Whether binning should be considered. By default binning is ignored. |
 
 #### 2. Repeat until `AutoFlats proceed` returns `END`
-##### 2.1 `AutoFlats proceed`: Proceeds to the next set of flats to be exposed. Must be called before the filter/rotation/binning/stack commands. Returns `END` if all necessary flats have been created.
+##### 2.1 `AutoFlats proceed`: Proceeds to the next set of flats to be exposed. Must be called before the filter/rotation/binning/stack commands. Returns `END` once all necessary flats have been created.
 | Argument (bold = required) | Description                   |
 |----------------------------|-------------------------------|
 |`--db <path>` | Path to file where the state is stored. |
@@ -49,7 +50,7 @@ A simple CLI tool to facilitate the automatic creation of flat frames. It scans 
 | Argument (bold = required) | Description                   |
 |----------------------------|-------------------------------|
 |`--db <path>` | Path to file where the state is stored. |
-##### 2.8 Optional. `AutoFlats calibrate`: Calibrates all lights matching the current set of flats with a stacked master flat
+##### 2.8 Optional. `AutoFlats calibrate`: Calibrates all lights matching the current set of flats with a stacked master flat. If batch size is set, returns `END` once all matching lights have been calibrated.
 | Argument (bold = required) | Description                   |
 |----------------------------|-------------------------------|
 |`--db <path>` | Path to file where the state is stored. |
@@ -63,9 +64,11 @@ A simple CLI tool to facilitate the automatic creation of flat frames. It scans 
 |`--outputsuffix` | Suffix added to the output file(s). |
 |`--skipifmissingdarks` | If set, calibration is skipped if darks are missing instead of aborting with an error. |
 |`--skipifmissingflats` | If set, calibration is skipped if master flat is missing instead of aborting with an error. |
+|`--batchsize` | If set, at most this number of lights are calibrated per command. |
 
 #### Optional. `AutoFlats terminate`: Terminates the session early and deletes the state file.
 | Argument (bold = required) | Description                   |
 |----------------------------|-------------------------------|
 |`--db <path>` | Path to file where the state is stored. |
+
 ---

@@ -143,7 +143,7 @@ namespace AutoFlats
 
                 // Copy master flat to flat dir and
                 // give it a useful name
-                var masterFlatName = $"MasterFlat [{set.Filter}][{set.Binning.X}x{set.Binning.Y}][{string.Format(CultureInfo.InvariantCulture, "{0:0.00}", set.Rotation)}°].{FILE_EXT}";
+                var masterFlatName = $"MasterFlat [{set.Filter}][{set.Binning.X}x{set.Binning.Y}][{string.Format(CultureInfo.InvariantCulture, "{0:0.00}", set.Rotation)}°][F{string.Format(CultureInfo.InvariantCulture, "{0:0.00}", set.FocusPosition)}].{FILE_EXT}";
                 var masterFlatFile = Path.Combine(flatsDir, masterFlatName);
                 File.Copy(Path.Combine(workingDir, $"{MASTER_FLAT_NAME}.{FILE_EXT}"), masterFlatFile, true);
 

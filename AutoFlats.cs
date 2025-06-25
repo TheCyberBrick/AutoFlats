@@ -14,6 +14,7 @@ namespace AutoFlats
             {
                 Filter = info.Filter;
                 Rotation = info.Rotation;
+                FocusPosition = info.FocusPosition;
                 Binning = info.Binning;
             }
 
@@ -22,6 +23,9 @@ namespace AutoFlats
 
             [JsonProperty(PropertyName = "rotation", Required = Required.Always)]
             public float Rotation { get; set; } = 0;
+
+            [JsonProperty(PropertyName = "focusPosition", Required = Required.Always)]
+            public float FocusPosition { get; set; } = 0;
 
             [JsonProperty(PropertyName = "binning", Required = Required.Always)]
             public Binning Binning { get; set; } = new(1, 1);
@@ -34,6 +38,9 @@ namespace AutoFlats
 
             [JsonProperty(PropertyName = "calibratedLights", NullValueHandling = NullValueHandling.Ignore)]
             public List<string> CalibratedLights { get; set; } = new();
+
+            [JsonProperty(PropertyName = "processedLights", NullValueHandling = NullValueHandling.Ignore)]
+            public List<string> ProcessedLights { get; set; } = new();
         }
 
         private class State
@@ -45,7 +52,10 @@ namespace AutoFlats
             public int CurrentIndex = -1;
 
             [JsonProperty(PropertyName = "rotationTolerance", NullValueHandling = NullValueHandling.Ignore)]
-            public float RotationTolerance { get; set; } = 360.0f;
+            public float RotationTolerance { get; set; } = -1.0f;
+
+            [JsonProperty(PropertyName = "focusTolerance", NullValueHandling = NullValueHandling.Ignore)]
+            public float FocusTolerance { get; set; } = -1.0f;
 
             [JsonProperty(PropertyName = "binning", NullValueHandling = NullValueHandling.Ignore)]
             public bool Binning { get; set; } = false;
@@ -57,9 +67,14 @@ namespace AutoFlats
                 {
                     FitsProperties properties = FitsProperties.Filter;
 
-                    if (RotationTolerance < 180.0f)
+                    if (RotationTolerance >= 0.0f && RotationTolerance < 180.0f)
                     {
                         properties |= FitsProperties.Rotation;
+                    }
+
+                    if (FocusTolerance >= 0.0f)
+                    {
+                        properties |= FitsProperties.FocusPosition;
                     }
 
                     if (Binning)
@@ -137,11 +152,12 @@ namespace AutoFlats
             DbFile = null;
         }
 
-        public void LoatFlatsSets(IEnumerable<string> paths, float rotationTolerance, bool binning)
+        public void LoadFlatsSets(IEnumerable<string> paths, float rotationTolerance, float focusTolerance, bool binning)
         {
             state = new()
             {
                 RotationTolerance = rotationTolerance,
+                FocusTolerance = focusTolerance,
                 Binning = binning
             };
             FindFlatsSets(paths);
@@ -152,22 +168,30 @@ namespace AutoFlats
             return new FlatsSet(FitsFileUtils.GetFitsInfoForFile(file, state.RequiredFlatsProperties));
         }
 
-        private IEnumerable<string> FindOriginalFitsFiles(IEnumerable<string> paths)
+        private IEnumerable<string> FindOriginalFitsFiles(IEnumerable<string> paths, bool excludeProcessedLights)
         {
-            static bool isExcluded(FlatsSet set, string file)
+            bool isExcluded(FlatsSet set, string file)
             {
                 if (set.MasterFlat != null && Path.GetFullPath(set.MasterFlat) == Path.GetFullPath(file))
                 {
                     return true;
                 }
-                return set.CalibratedLights.Any(light => Path.GetFullPath(light) == Path.GetFullPath(file));
+                if (set.CalibratedLights.Any(light => Path.GetFullPath(light) == Path.GetFullPath(file)))
+                {
+                    return true;
+                }
+                if (excludeProcessedLights && set.ProcessedLights.Any(light => Path.GetFullPath(light) == Path.GetFullPath(file)))
+                {
+                    return true;
+                }
+                return false;
             }
             return FitsFileUtils.FindFitsFiles(paths).Where(file => !state.FlatsSets.Any(set => isExcluded(set, file)));
         }
 
         private void FindFlatsSets(IEnumerable<string> paths)
         {
-            var files = FindOriginalFitsFiles(paths);
+            var files = FindOriginalFitsFiles(paths, false);
 
             foreach (var file in files)
             {
@@ -177,7 +201,7 @@ namespace AutoFlats
 
                 foreach (var stateFlatsSet in state.FlatsSets)
                 {
-                    if (CompareFlatsSets(fileFlatsSet, stateFlatsSet, state.RotationTolerance, state.Binning))
+                    if (CompareFlatsSets(fileFlatsSet, stateFlatsSet, state.RotationTolerance, state.FocusTolerance, state.Binning))
                     {
                         hasMatchingFlatsSet = true;
                         ++stateFlatsSet.Count;
@@ -195,17 +219,22 @@ namespace AutoFlats
 
         public void Sort()
         {
-            state.FlatsSets = new(state.FlatsSets.OrderBy(set => set.Rotation).ThenBy(set => set.Filter));
+            state.FlatsSets = new(state.FlatsSets.OrderBy(set => set.Rotation).ThenBy(set => set.FocusPosition).ThenBy(set => set.Filter));
         }
 
-        private bool CompareFlatsSets(FlatsSet flatsSet1, FlatsSet flatsSet2, float rotationTolerance, bool binning)
+        private bool CompareFlatsSets(FlatsSet flatsSet1, FlatsSet flatsSet2, float rotationTolerance, float focusTolerance, bool binning)
         {
-            if (!flatsSet1.Filter.Equals(flatsSet2.Filter) || (binning && !flatsSet1.Binning.Equals(flatsSet2.Binning)))
+            if (!flatsSet1.Filter.Equals(flatsSet2.Filter))
             {
                 return false;
             }
 
-            if (rotationTolerance < 180.0f)
+            if (binning && !flatsSet1.Binning.Equals(flatsSet2.Binning))
+            {
+                return false;
+            }
+
+            if (rotationTolerance >= 0.0f && rotationTolerance < 180.0f)
             {
                 float diff = flatsSet2.Rotation - flatsSet1.Rotation;
 
@@ -216,7 +245,15 @@ namespace AutoFlats
                     delta -= 360.0F;
                 }
 
-                return Math.Abs(delta) < rotationTolerance;
+                if (Math.Abs(delta) > rotationTolerance)
+                {
+                    return false;
+                }
+            }
+
+            if (focusTolerance >= 0.0f && Math.Abs(flatsSet2.FocusPosition - flatsSet1.FocusPosition) > focusTolerance)
+            {
+                return false;
             }
 
             return true;
@@ -265,6 +302,11 @@ namespace AutoFlats
         public float GetCurrentRotation()
         {
             return GetCurrentFlatsSet().Rotation;
+        }
+
+        public float GetCurrentFocusPosition()
+        {
+            return GetCurrentFlatsSet().FocusPosition;
         }
 
         public Binning GetCurrentBinning()
@@ -333,7 +375,7 @@ namespace AutoFlats
             {
                 var flatsSet = GetFlatsSetForFile(file);
 
-                if (CompareFlatsSets(flatsSet, set, state.RotationTolerance, state.Binning))
+                if (CompareFlatsSets(flatsSet, set, state.RotationTolerance, state.FocusTolerance, state.Binning))
                 {
                     matchingFiles.Add(file);
                 }
@@ -345,7 +387,7 @@ namespace AutoFlats
         public void Stack(Stacker stacker, IEnumerable<string> flatsPaths, IEnumerable<string>? darksPaths, float exposureTolerance, bool keepOnlyMasterFlat, string outputPrefix, string outputSuffix)
         {
             var currentFlatsSet = GetCurrentFlatsSet();
-            var flats = GetFilesForFlatsSet(FindOriginalFitsFiles(flatsPaths), currentFlatsSet);
+            var flats = GetFilesForFlatsSet(FindOriginalFitsFiles(flatsPaths, false), currentFlatsSet);
 
             if (!flats.Any())
             {
@@ -353,7 +395,7 @@ namespace AutoFlats
                 return;
             }
 
-            var darks = darksPaths != null ? FindMatchingDarks(flats, FindOriginalFitsFiles(darksPaths), exposureTolerance) : null;
+            var darks = darksPaths != null ? FindMatchingDarks(flats, FindOriginalFitsFiles(darksPaths, false), exposureTolerance) : null;
 
             string masterFlat;
             try
@@ -416,15 +458,23 @@ namespace AutoFlats
             return GetCurrentFlatsSet().MasterFlat;
         }
 
-        public void Calibrate(Calibrator calibrator, IEnumerable<string> lightsPaths, IEnumerable<string> darksPaths, float exposureTolerance, bool copyHeaders, bool keepOnlyCalibratedLights, string outputPrefix, string outputSuffix)
+        public bool Calibrate(Calibrator calibrator, IEnumerable<string> lightsPaths, IEnumerable<string> darksPaths, float exposureTolerance, bool copyHeaders, bool keepOnlyCalibratedLights, string outputPrefix, string outputSuffix, int batchSize)
         {
             var currentFlatsSet = GetCurrentFlatsSet();
-            var lights = GetFilesForFlatsSet(FindOriginalFitsFiles(lightsPaths), currentFlatsSet);
+            var lights = GetFilesForFlatsSet(FindOriginalFitsFiles(lightsPaths, true), currentFlatsSet);
+
+            bool complete = true;
+
+            if (batchSize > 0 && batchSize < lights.Count)
+            {
+                lights = lights.Take(batchSize).ToList();
+                complete = false;
+            }
 
             if (!lights.Any())
             {
                 // Nothing to calibrate
-                return;
+                return true;
             }
 
             var flat = GetCurrentMasterFlat();
@@ -433,7 +483,7 @@ namespace AutoFlats
                 throw new CalibrationFrameNotFoundException(CalibrationFrameNotFoundException.FrameType.Flat, null, "There is no master flat");
             }
 
-            var darks = FindMatchingDarks(lights, FindOriginalFitsFiles(darksPaths), exposureTolerance);
+            var darks = FindMatchingDarks(lights, FindOriginalFitsFiles(darksPaths, false), exposureTolerance);
 
             List<string> calibratedLights;
             try
@@ -493,8 +543,6 @@ namespace AutoFlats
                 }
             }
 
-            currentFlatsSet.CalibratedLights.Clear();
-
             for (int i = 0; i < lights.Count; ++i)
             {
                 var light = lights[i];
@@ -525,11 +573,21 @@ namespace AutoFlats
                     throw new Exception($"Failed moving light {light}: {ex.Message}");
                 }
             }
+
+            // Save to state
+            currentFlatsSet.ProcessedLights.AddRange(lights);
+
+            return complete;
         }
 
         public IReadOnlyList<string> GetCurrentCalibratedLights()
         {
             return GetCurrentFlatsSet().CalibratedLights;
+        }
+
+        public IReadOnlyList<string> GetCurrentProcessedLights()
+        {
+            return GetCurrentFlatsSet().ProcessedLights;
         }
     }
 }

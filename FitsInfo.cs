@@ -9,6 +9,7 @@ namespace AutoFlats
     public record struct FitsInfo(
         [JsonProperty(PropertyName = "filter", Required = Required.Always)] string Filter,
         [JsonProperty(PropertyName = "rotation", Required = Required.Always)] float Rotation,
+        [JsonProperty(PropertyName = "focusPosition", Required = Required.Always)] float FocusPosition,
         [JsonProperty(PropertyName = "binning", Required = Required.Always)] Binning Binning,
         [JsonProperty(PropertyName = "exposure", Required = Required.Always)] float Exposure,
         [JsonProperty(PropertyName = "width", Required = Required.Always)] int Width,

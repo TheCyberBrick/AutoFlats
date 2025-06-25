@@ -191,10 +191,33 @@ namespace AutoFlats
                         }
                     }
 
+                    double focusPos = 0;
+                    HeaderCard focusPosCard = header.FindCard("FOCUSPOS");
+                    if (focusPosCard == null)
+                    {
+                        focusPosCard = header.FindCard("FOCPOS");
+                    }
+                    if (focusPosCard != null && focusPosCard.Value != null && double.TryParse(focusPosCard.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var foc))
+                    {
+                        focusPos = foc;
+                    }
+                    else if (requiredProperties.HasFlag(FitsProperties.FocusPosition))
+                    {
+                        if (throwOnMissingKeyword)
+                        {
+                            throw new KeywordNotFoundException(file, "FOCUSPOS", $"Missing FOCUSPOS / FOCPOS keyword in FITS file {file}");
+                        }
+                        else
+                        {
+                            return false;
+                        }
+                    }
+
                     info = new FitsInfo()
                     {
                         Filter = filter ?? "",
                         Rotation = (float)rotation,
+                        FocusPosition = (float)focusPos,
                         Binning = new(bx, by),
                         Exposure = (float)exposure,
                         Width = width,

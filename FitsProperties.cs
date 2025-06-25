@@ -7,6 +7,7 @@
         Filter = 1,
         Rotation = 2,
         Binning = 4,
-        Exposure = 8
+        Exposure = 8,
+        FocusPosition = 16,
     }
 }

@@ -18,8 +18,11 @@ namespace AutoFlats
             [Option(Required = true, HelpText = "Path to FITS files. Can be a directory or FITS file.")]
             public IEnumerable<string> Files { get; set; }
 
-            [Option("rtol", Default = 360, HelpText = "Rotation tolerance in degrees.")]
+            [Option("rtol", Default = -1, HelpText = "Rotation tolerance in degrees.")]
             public float RotationTolerance { get; set; }
+
+            [Option("ftol", Default = -1, HelpText = "Focus position tolerance in steps.")]
+            public float FocusTolerance { get; set; }
 
             [Option(Default = false, HelpText = "Whether binning should be considered.")]
             public bool Binning { get; set; }
@@ -42,6 +45,11 @@ namespace AutoFlats
 
         [Verb("rotation", HelpText = "Returns the rotation (in degrees) of the current set of flats.")]
         private class RotationOptions : StatefulOptions
+        {
+        }
+
+        [Verb("focus", HelpText = "Returns the focus position (in steps) of the current set of flats.")]
+        private class FocusPositionOptions : StatefulOptions
         {
         }
 
@@ -138,6 +146,9 @@ namespace AutoFlats
 
             [Option(Default = false, HelpText = "If set, calibration is skipped if master flat is missing instead of aborting with an error.")]
             public bool SkipIfMissingFlats { get; set; }
+
+            [Option(Default = 0, HelpText = "If set, at most this number of lights are calibrated per command.")]
+            public int BatchSize { get; set; }
         }
 
         [Verb("calibratedLights", HelpText = "Returns the paths of the calibrated lights of the current set of flats.")]
@@ -145,20 +156,27 @@ namespace AutoFlats
         {
         }
 
+        [Verb("processedLights", HelpText = "Returns the paths of the processed lights of the current set of flats.")]
+        private class ProcessedLightsOptions : StatefulOptions
+        {
+        }
+
         public static int Main(string[] args)
         {
-            return Parser.Default.ParseArguments<InitOptions, TerminateOptions, ProceedOptions, FilterOptions, RotationOptions, BinningOptions, StackOptions, MasterFlatOptions, CalibrateOptions, CalibratedLightsOptions>(args)
+            return Parser.Default.ParseArguments<InitOptions, TerminateOptions, ProceedOptions, FilterOptions, RotationOptions, FocusPositionOptions, BinningOptions, StackOptions, MasterFlatOptions, CalibrateOptions, CalibratedLightsOptions, ProcessedLightsOptions>(args)
                 .MapResult(
                 (InitOptions opts) => Init(opts),
                 (TerminateOptions opts) => Terminate(opts),
                 (ProceedOptions opts) => Proceed(opts),
                 (FilterOptions opts) => Filter(opts),
                 (RotationOptions opts) => Rotation(opts),
+                (FocusPositionOptions opts) => FocusPosition(opts),
                 (BinningOptions opts) => Binning(opts),
                 (StackOptions opts) => Stack(opts),
                 (MasterFlatOptions opts) => MasterFlat(opts),
                 (CalibrateOptions opts) => Calibrate(opts),
                 (CalibratedLightsOptions opts) => CalibratedLights(opts),
+                (ProcessedLightsOptions opts) => ProcessedLights(opts),
                 errs => 1);
         }
 
@@ -203,7 +221,7 @@ namespace AutoFlats
         {
             return Run(opts, true, autoflats =>
             {
-                autoflats.LoatFlatsSets(opts.Files, opts.RotationTolerance, opts.Binning);
+                autoflats.LoadFlatsSets(opts.Files, opts.RotationTolerance, opts.FocusTolerance, opts.Binning);
                 autoflats.Sort();
 
                 if (!autoflats.FlatsSets.Any())
@@ -222,8 +240,9 @@ namespace AutoFlats
                         .Append("[")
                         .Append(set.Binning.X).Append("x").Append(set.Binning.Y)
                         .Append(" ").Append(set.Filter).Append(" ")
-                        .Append(string.Format(CultureInfo.InvariantCulture, "{0:0.00}", set.Rotation))
-                        .Append("°], ");
+                        .Append(string.Format(CultureInfo.InvariantCulture, "{0:0.00}", set.Rotation)).Append("° ")
+                        .Append("F").Append(string.Format(CultureInfo.InvariantCulture, "{0:0.00}", set.FocusPosition))
+                        .Append("], ");
                     }
 
                     sb.Remove(sb.Length - 2, 2);
@@ -270,6 +289,14 @@ namespace AutoFlats
             return Run(opts, false, autoflats =>
             {
                 Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "{0:0.00}", autoflats.GetCurrentRotation()));
+            });
+        }
+
+        private static int FocusPosition(FocusPositionOptions opts)
+        {
+            return Run(opts, false, autoflats =>
+            {
+                Console.WriteLine(string.Format(CultureInfo.InvariantCulture, "{0:0.00}", autoflats.GetCurrentFocusPosition()));
             });
         }
 
@@ -339,9 +366,10 @@ namespace AutoFlats
                         throw new Exception($"Unknown calibration method {opts.CalibrationMethod}");
                 }
 
+                bool complete = true;
                 try
                 {
-                    autoflats.Calibrate(calibrator, opts.Lights, opts.Darks, opts.ExposureTolerance, opts.CopyHeaders, opts.KeepOnlyCalibratedLights, opts.OutputPrefix, opts.OutputSuffix);
+                    complete = autoflats.Calibrate(calibrator, opts.Lights, opts.Darks, opts.ExposureTolerance, opts.CopyHeaders, opts.KeepOnlyCalibratedLights, opts.OutputPrefix, opts.OutputSuffix, opts.BatchSize);
                 }
                 catch (CalibrationFrameNotFoundException ex)
                 {
@@ -351,7 +379,21 @@ namespace AutoFlats
                     }
                 }
 
-                Console.WriteLine("OK");
+                if (opts.BatchSize > 0)
+                {
+                    if (!complete)
+                    {
+                        Console.WriteLine("OK");
+                    }
+                    else
+                    {
+                        Console.WriteLine("END");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("OK");
+                }
             });
         }
 
@@ -367,6 +409,22 @@ namespace AutoFlats
                 foreach (var calibratedLight in calibratedLights)
                 {
                     Console.WriteLine(calibratedLight);
+                }
+            });
+        }
+
+        private static int ProcessedLights(ProcessedLightsOptions opts)
+        {
+            return Run(opts, false, autoflats =>
+            {
+                var processedLights = autoflats.GetCurrentProcessedLights();
+                if (processedLights.Count == 0)
+                {
+                    throw new Exception("There are no processed lights");
+                }
+                foreach (var processedLight in processedLights)
+                {
+                    Console.WriteLine(processedLight);
                 }
             });
         }
