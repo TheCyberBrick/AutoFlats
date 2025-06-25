@@ -190,7 +190,7 @@ namespace AutoFlats
             return false;
         }
 
-        private IEnumerable<string> FindOriginalFitsFiles(IEnumerable<string> paths, bool excludeProcessedLights)
+        private IEnumerable<string> FindOriginalFitsFiles(IEnumerable<string> paths, bool excludeCalibratedLights, bool excludeProcessedLights)
         {
             bool isExcluded(FlatsSet set, string file)
             {
@@ -198,7 +198,7 @@ namespace AutoFlats
                 {
                     return true;
                 }
-                if (set.CalibratedLights.Any(light => Path.GetFullPath(light) == Path.GetFullPath(file)))
+                if (excludeCalibratedLights && set.CalibratedLights.Any(light => Path.GetFullPath(light) == Path.GetFullPath(file)))
                 {
                     return true;
                 }
@@ -213,35 +213,35 @@ namespace AutoFlats
 
         private void FindAndAddFlatsSets(IEnumerable<string> paths)
         {
-            IEnumerable<(string File, FitsInfo FitsInfo)> fileFitsInfos = FindOriginalFitsFiles(paths, false).Select(file => (file, GetFitsInfoForFile(file))).OrderBy(t => t.file).ToList();
+            IEnumerable<(string File, FitsInfo FitsInfo)> fileFitsInfos = FindOriginalFitsFiles(paths, false, false).Select(file => (file, GetFitsInfoForFile(file))).OrderBy(t => t.file).ToList();
 
             var fileFlatsSets = new Dictionary<string, FlatsSet>();
 
             var calibratedFitsInfoMap = new Dictionary<string, FitsInfo>();
+            var calibratedFileFlatsSetList = new List<(string File, FlatsSet FlatsSet)>();
+
+            FlatsSet? findMatchingFlatsSet(FlatsSet set)
+            {
+                foreach (var stateFlatsSet in state.FlatsSets)
+                {
+                    if (CompareFlatsSets(set, stateFlatsSet, state.RotationTolerance, state.FocusTolerance, state.Binning))
+                    {
+                        return stateFlatsSet;
+                    }
+                }
+                return null;
+            }
 
             foreach (var (file, fitsInfo) in fileFitsInfos)
             {
                 var fileFlatsSet = new FlatsSet(fitsInfo);
 
-                FlatsSet? matchingFlatsSet = null;
-
-                foreach (var stateFlatsSet in state.FlatsSets)
-                {
-                    if (CompareFlatsSets(fileFlatsSet, stateFlatsSet, state.RotationTolerance, state.FocusTolerance, state.Binning))
-                    {
-                        matchingFlatsSet = stateFlatsSet;
-                        break;
-                    }
-                }
+                FlatsSet? matchingFlatsSet = findMatchingFlatsSet(fileFlatsSet);
 
                 if (fitsInfo.IsCalibrated && fitsInfo.UncalibratedFileNameBase64 != null && fitsInfo.UncalibratedFileNameMD5 != null && fitsInfo.UncalibratedFileDataMD5 != null)
                 {
                     calibratedFitsInfoMap[fitsInfo.UncalibratedFileNameMD5.ToLowerInvariant()] = fitsInfo;
-
-                    if (matchingFlatsSet != null)
-                    {
-                        matchingFlatsSet.CalibratedLights.Add(file);
-                    }
+                    calibratedFileFlatsSetList.Add((file, fileFlatsSet));
                 }
                 else if (matchingFlatsSet != null)
                 {
@@ -290,6 +290,16 @@ namespace AutoFlats
                             }
                         }
                     }
+                }
+            }
+
+            foreach (var (file, fileFlatsSet) in calibratedFileFlatsSetList)
+            {
+                FlatsSet? matchingFlatsSet = findMatchingFlatsSet(fileFlatsSet);
+
+                if (matchingFlatsSet != null)
+                {
+                    matchingFlatsSet.CalibratedLights.Add(file);
                 }
             }
         }
@@ -473,7 +483,7 @@ namespace AutoFlats
         public void Stack(Stacker stacker, IEnumerable<string> flatsPaths, IEnumerable<string>? darksPaths, float exposureTolerance, bool keepOnlyMasterFlat, string outputPrefix, string outputSuffix)
         {
             var currentFlatsSet = GetCurrentFlatsSet();
-            var flats = GetFilesForFlatsSet(FindOriginalFitsFiles(flatsPaths, false), currentFlatsSet, false);
+            var flats = GetFilesForFlatsSet(FindOriginalFitsFiles(flatsPaths, false, false), currentFlatsSet, false);
 
             if (!flats.Any())
             {
@@ -481,7 +491,7 @@ namespace AutoFlats
                 return;
             }
 
-            var darks = darksPaths != null ? FindMatchingDarks(flats, FindOriginalFitsFiles(darksPaths, false), exposureTolerance) : null;
+            var darks = darksPaths != null ? FindMatchingDarks(flats, FindOriginalFitsFiles(darksPaths, false, false), exposureTolerance) : null;
 
             string masterFlat;
             try
@@ -547,7 +557,7 @@ namespace AutoFlats
         public bool Calibrate(Calibrator calibrator, IEnumerable<string> lightsPaths, IEnumerable<string> darksPaths, float exposureTolerance, bool copyHeaders, bool keepOnlyCalibratedLights, string outputPrefix, string outputSuffix, int batchSize)
         {
             var currentFlatsSet = GetCurrentFlatsSet();
-            var lights = GetFilesForFlatsSet(FindOriginalFitsFiles(lightsPaths, true), currentFlatsSet, true);
+            var lights = GetFilesForFlatsSet(FindOriginalFitsFiles(lightsPaths, true, true), currentFlatsSet, true);
 
             bool complete = true;
 
@@ -569,7 +579,7 @@ namespace AutoFlats
                 throw new CalibrationFrameNotFoundException(CalibrationFrameNotFoundException.FrameType.Flat, null, "There is no master flat");
             }
 
-            var darks = FindMatchingDarks(lights, FindOriginalFitsFiles(darksPaths, false), exposureTolerance);
+            var darks = FindMatchingDarks(lights, FindOriginalFitsFiles(darksPaths, false, false), exposureTolerance);
 
             List<string> calibratedLights;
             try
@@ -692,9 +702,9 @@ namespace AutoFlats
             return GetCurrentFlatsSet().ProcessedLights;
         }
 
-        public IReadOnlyList<string> GetMatchingFiles(IEnumerable<string> paths, bool excludeProcessedFiles)
+        public IReadOnlyList<string> GetMatchingFiles(IEnumerable<string> paths, bool excludeCalibratedFiles, bool excludeProcessedFiles)
         {
-            return GetFilesForFlatsSet(FindOriginalFitsFiles(paths, excludeProcessedFiles), GetCurrentFlatsSet(), false);
+            return GetFilesForFlatsSet(FindOriginalFitsFiles(paths, excludeCalibratedFiles, excludeProcessedFiles), GetCurrentFlatsSet(), false);
         }
     }
 }

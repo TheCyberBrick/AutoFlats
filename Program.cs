@@ -167,6 +167,9 @@ namespace AutoFlats
             [Option(Required = true, HelpText = "Paths to search. The files may be located in subdirectories.")]
             public IEnumerable<string> Paths { get; set; }
 
+            [Option(Default = false, HelpText = "If set, already calibrated files are excluded.")]
+            public bool ExcludeCalibratedFiles { get; set; }
+
             [Option(Default = false, HelpText = "If set, already processed files are excluded.")]
             public bool ExcludeProcessedFiles { get; set; }
         }
@@ -444,7 +447,7 @@ namespace AutoFlats
         {
             return Run(opts, false, autoflats =>
             {
-                var matchingFiles = autoflats.GetMatchingFiles(opts.Paths, opts.ExcludeProcessedFiles);
+                var matchingFiles = autoflats.GetMatchingFiles(opts.Paths, opts.ExcludeCalibratedFiles, opts.ExcludeProcessedFiles);
                 if (matchingFiles.Count == 0)
                 {
                     throw new Exception("There are no matching files");
