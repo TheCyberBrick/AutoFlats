@@ -161,9 +161,19 @@ namespace AutoFlats
         {
         }
 
+        [Verb("matchingFiles", HelpText = "Returns the paths of the matching files of the current set of flats.")]
+        private class MatchingFilesOptions : StatefulOptions
+        {
+            [Option(Required = true, HelpText = "Paths to search. The files may be located in subdirectories.")]
+            public IEnumerable<string> Paths { get; set; }
+
+            [Option(Default = false, HelpText = "If set, already processed files are excluded.")]
+            public bool ExcludeProcessedFiles { get; set; }
+        }
+
         public static int Main(string[] args)
         {
-            return Parser.Default.ParseArguments<InitOptions, TerminateOptions, ProceedOptions, FilterOptions, RotationOptions, FocusPositionOptions, BinningOptions, StackOptions, MasterFlatOptions, CalibrateOptions, CalibratedLightsOptions, ProcessedLightsOptions>(args)
+            return Parser.Default.ParseArguments<InitOptions, TerminateOptions, ProceedOptions, FilterOptions, RotationOptions, FocusPositionOptions, BinningOptions, StackOptions, MasterFlatOptions, CalibrateOptions, CalibratedLightsOptions, ProcessedLightsOptions, MatchingFilesOptions>(args)
                 .MapResult(
                 (InitOptions opts) => Init(opts),
                 (TerminateOptions opts) => Terminate(opts),
@@ -177,6 +187,7 @@ namespace AutoFlats
                 (CalibrateOptions opts) => Calibrate(opts),
                 (CalibratedLightsOptions opts) => CalibratedLights(opts),
                 (ProcessedLightsOptions opts) => ProcessedLights(opts),
+                (MatchingFilesOptions opts) => MatchingFiles(opts),
                 errs => 1);
         }
 
@@ -425,6 +436,22 @@ namespace AutoFlats
                 foreach (var processedLight in processedLights)
                 {
                     Console.WriteLine(processedLight);
+                }
+            });
+        }
+
+        private static int MatchingFiles(MatchingFilesOptions opts)
+        {
+            return Run(opts, false, autoflats =>
+            {
+                var matchingFiles = autoflats.GetMatchingFiles(opts.Paths, opts.ExcludeProcessedFiles);
+                if (matchingFiles.Count == 0)
+                {
+                    throw new Exception("There are no matching files");
+                }
+                foreach (var matchingFile in matchingFiles)
+                {
+                    Console.WriteLine(matchingFile);
                 }
             });
         }

@@ -13,5 +13,12 @@ namespace AutoFlats
         [JsonProperty(PropertyName = "binning", Required = Required.Always)] Binning Binning,
         [JsonProperty(PropertyName = "exposure", Required = Required.Always)] float Exposure,
         [JsonProperty(PropertyName = "width", Required = Required.Always)] int Width,
-        [JsonProperty(PropertyName = "height", Required = Required.Always)] int Height);
+        [JsonProperty(PropertyName = "height", Required = Required.Always)] int Height,
+        [JsonProperty(PropertyName = "uncalibratedFileNameBase64")] string? UncalibratedFileNameBase64,
+        [JsonProperty(PropertyName = "uncalibratedFileNameMD5")] string? UncalibratedFileNameMD5,
+        [JsonProperty(PropertyName = "uncalibratedFileDataMD5")] string? UncalibratedFileDataMD5)
+    {
+        [JsonIgnore]
+        public readonly bool IsCalibrated => UncalibratedFileNameBase64 != null && UncalibratedFileNameMD5 != null && UncalibratedFileDataMD5 != null;
+    }
 }

@@ -1,12 +1,17 @@
 ﻿using nom.tam.fits;
-using System.Collections;
 using System.Globalization;
 using System.Text.RegularExpressions;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace AutoFlats
 {
     public static class FitsFileUtils
     {
+        public const string UNCALIBRATED_FILE_NAME_BASE64_KEYWORD = "UCALNB64";
+        public const string UNCALIBRATED_FILE_NAME_MD5_KEYWORD = "UCALNMD5";
+        public const string UNCALIBRATED_FILE_DATA_MD5_KEYWORD = "UCALDMD5";
+
         public static IEnumerable<string> FindFitsFiles(IEnumerable<string> paths)
         {
             HashSet<string> files = new();
@@ -221,7 +226,10 @@ namespace AutoFlats
                         Binning = new(bx, by),
                         Exposure = (float)exposure,
                         Width = width,
-                        Height = height
+                        Height = height,
+                        UncalibratedFileNameBase64 = header.GetStringValue(UNCALIBRATED_FILE_NAME_BASE64_KEYWORD),
+                        UncalibratedFileNameMD5 = header.GetStringValue(UNCALIBRATED_FILE_NAME_MD5_KEYWORD),
+                        UncalibratedFileDataMD5 = header.GetStringValue(UNCALIBRATED_FILE_DATA_MD5_KEYWORD),
                     };
                     return true;
                 }
@@ -244,20 +252,23 @@ namespace AutoFlats
             }
         }
 
-        public static void MergeFitsHeader(string targetFile, string sourceFile, HashSet<string> exclusions)
+        public static void MergeFitsHeader(string targetFile, string sourceFile, HashSet<string> exclusions, Dictionary<string, (string Value, string? Comment)> additionalTags)
         {
-            var cout = Console.Out;
-            var cerr = Console.Error;
+            var cardsToCopy = new List<HeaderCard>();
+
+            foreach (var (key, (value, comment)) in additionalTags)
+            {
+                cardsToCopy.Add(new HeaderCard(key, TruncateCardValue(value), comment));
+            }
 
             // Temporarily disabling console output because
             // CSharpFits seems to print out debug stuff
+            var cout = Console.Out;
+            var cerr = Console.Error;
             Console.SetOut(TextWriter.Null);
             Console.SetError(TextWriter.Null);
-
             try
             {
-                var cardsToCopy = new List<HeaderCard>();
-
                 try
                 {
                     var sourceFs = new FileStream(sourceFile, FileMode.Open, FileAccess.ReadWrite);
@@ -324,7 +335,10 @@ namespace AutoFlats
 
                             foreach (var card in cardsToCopy)
                             {
-                                header.RemoveCard(card.Key);
+                                if (!"CONTINUE".Equals(card.Key.ToUpperInvariant()))
+                                {
+                                    header.RemoveCard(card.Key);
+                                }
                                 header.AddCard(card);
                             }
                         }
@@ -362,6 +376,45 @@ namespace AutoFlats
             {
                 Console.SetOut(cout);
                 Console.SetError(cerr);
+            }
+        }
+
+        private static string? TruncateCardValue(string? value)
+        {
+            if (value != null && value.Length > HeaderCard.MAX_VALUE_LENGTH - 2)
+            {
+                value = value.Substring(0, HeaderCard.MAX_VALUE_LENGTH - 2);
+            }
+            return value;
+        }
+
+        public static string CalculateTextBase64(string text)
+        {
+            return Convert.ToBase64String(Encoding.UTF8.GetBytes(text));
+        }
+
+        public static string CalculateTextHash(string text)
+        {
+            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(text)))
+            {
+                var md5 = MD5.Create();
+                return BitConverter.ToString(md5.ComputeHash(stream)).Replace("-", String.Empty).ToLowerInvariant();
+            }
+        }
+
+        public static string CalculateFileHash(string file)
+        {
+            try
+            {
+                using (var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 16 * 1024 * 1024))
+                {
+                    var md5 = MD5.Create();
+                    return BitConverter.ToString(md5.ComputeHash(stream)).Replace("-", String.Empty).ToLowerInvariant();
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Cannot read FITS file {file}: {ex.Message}", ex);
             }
         }
     }
