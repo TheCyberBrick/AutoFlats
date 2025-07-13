@@ -1,7 +1,9 @@
-﻿namespace AutoFlats
+﻿namespace AutoFlats.Siril
 {
     public class SirilCalibrator : SirilCli, Calibrator
     {
+        public bool CanWriteHeader => false;
+
         private const string PREPROCESSED_SEQUENCE_PREFIX = "pp_";
 
         public string CalibrationParameters { get; set; } = "-cc=dark";
@@ -42,7 +44,7 @@
             }
         }
 
-        public List<string> Calibrate(AutoFlats.FlatsSet set, IReadOnlyList<string> lights, Func<string, string> darkMap, string flat)
+        public List<string> Calibrate(AutoFlats.FlatsSet set, IReadOnlyList<string> lights, Func<string, string> darkMap, string flat, Func<string, Dictionary<string, (string, string?)>> additionalTagsMap)
         {
             // Group into sequences
             var sequences = new Dictionary<(string ParentDir, string Dark), LightsSequence>();
@@ -131,7 +133,7 @@
 
                         var calibratedLightName = $"calibrated_{Path.GetFileName(light)}";
                         var calibratedLightFile = Path.Combine(parentDir, calibratedLightName);
-                        File.Copy(map[light], calibratedLightFile);
+                        File.Move(map[light], calibratedLightFile, false);
 
                         calibratedLights.Add(calibratedLightFile);
                     }

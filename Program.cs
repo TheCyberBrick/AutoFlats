@@ -1,4 +1,6 @@
-﻿using CommandLine;
+﻿using AutoFlats.PI;
+using AutoFlats.Siril;
+using CommandLine;
 using System.Globalization;
 using System.Text;
 
@@ -67,7 +69,7 @@ namespace AutoFlats
 
         private enum StackingMethod
         {
-            Siril
+            Siril, PixInsight
         }
 
         [Verb("stack", HelpText = "Integrates the current set of flats into a single stacked and calibrated master flat.")]
@@ -108,7 +110,7 @@ namespace AutoFlats
 
         private enum CalibrationMethod
         {
-            Siril
+            Siril, PixInsight
         }
 
         [Verb("calibrate", HelpText = "Calibrates all lights matching the current set of flats with a stacked master flat.")]
@@ -333,6 +335,14 @@ namespace AutoFlats
                     case StackingMethod.Siril:
                         stacker = new SirilStacker(opts.ApplicationPath);
                         break;
+                    case StackingMethod.PixInsight:
+                        var split = opts.ApplicationPath.LastIndexOf("|");
+                        if (split < 0 || split == opts.ApplicationPath.Length || !int.TryParse(opts.ApplicationPath.Substring(split + 1), out var slot))
+                        {
+                            throw new Exception("ApplicationPath is missing PixInsight slot parameter (e.g. \"C:/PixInsight.exe|<slot>)\"");
+                        }
+                        stacker = new PIStacker(opts.ApplicationPath.Substring(0, split), slot);
+                        break;
                     default:
                         throw new Exception($"Unknown stacking method {opts.StackingMethod}");
                 }
@@ -375,6 +385,14 @@ namespace AutoFlats
                 {
                     case CalibrationMethod.Siril:
                         calibrator = new SirilCalibrator(opts.ApplicationPath);
+                        break;
+                    case CalibrationMethod.PixInsight:
+                        var split = opts.ApplicationPath.LastIndexOf("|");
+                        if (split < 0 || split == opts.ApplicationPath.Length || !int.TryParse(opts.ApplicationPath.Substring(split + 1), out var slot))
+                        {
+                            throw new Exception("ApplicationPath is missing PixInsight slot parameter (e.g. \"C:/PixInsight.exe|<slot>)\"");
+                        }
+                        calibrator = new PICalibrator(opts.ApplicationPath.Substring(0, split), slot);
                         break;
                     default:
                         throw new Exception($"Unknown calibration method {opts.CalibrationMethod}");

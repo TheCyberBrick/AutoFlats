@@ -606,10 +606,33 @@ namespace AutoFlats
 
             var darks = FindMatchingDarks(lights, FindOriginalFitsFiles(darksPaths, false, false), exposureTolerance);
 
+            var additionalTagsMap = Dictionary<string, (string, string?)> (string light) =>
+            {
+                try
+                {
+                    var lightFileName = Path.GetFileName(light);
+                    return new()
+                        {
+                            { FitsFileUtils.UNCALIBRATED_FILE_NAME_BASE64_KEYWORD, (FitsFileUtils.CalculateTextBase64(lightFileName), "Base64 of name of uncalibrated file") },
+                            { FitsFileUtils.UNCALIBRATED_FILE_NAME_MD5_KEYWORD, (FitsFileUtils.CalculateTextHash(lightFileName).ToLowerInvariant(), "MD5 of name of uncalibrated file") },
+                            { FitsFileUtils.UNCALIBRATED_FILE_DATA_MD5_KEYWORD, (FitsFileUtils.CalculateFileHash(light).ToLowerInvariant(), "MD5 of data of uncalibrated file") }
+                        };
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception($"Failed calculating hash from {light}: {ex.Message}", ex);
+                }
+            };
+
             List<string> calibratedLights;
             try
             {
-                calibratedLights = calibrator.Calibrate(currentFlatsSet, lights, light => darks[light], flat);
+                calibratedLights = calibrator.Calibrate(currentFlatsSet, lights, light => darks[light], flat, additionalTagsMap);
+
+                if (calibratedLights.Count < lights.Count)
+                {
+                    throw new Exception($"Missing calibrated lights, expected {lights.Count}, got {calibratedLights.Count}");
+                }
 
                 foreach (var calibratedLight in calibratedLights)
                 {
@@ -624,7 +647,7 @@ namespace AutoFlats
                 throw new Exception($"Failed calibrating lights: {ex.Message}");
             }
 
-            if (copyHeaders)
+            if (copyHeaders && !calibrator.CanWriteHeader)
             {
                 for (int i = 0; i < lights.Count; ++i)
                 {
@@ -638,25 +661,9 @@ namespace AutoFlats
                         "BITPIX", "BSCALE", "BZERO", "NAXIS1", "NAXIS2", "ROWORDER"
                     };
 
-                    Dictionary<string, (string, string?)> additionalTags;
                     try
                     {
-                        var lightFileName = Path.GetFileName(light);
-                        additionalTags = new()
-                        {
-                            { FitsFileUtils.UNCALIBRATED_FILE_NAME_BASE64_KEYWORD, (FitsFileUtils.CalculateTextBase64(lightFileName), "Base64 of name of uncalibrated file") },
-                            { FitsFileUtils.UNCALIBRATED_FILE_NAME_MD5_KEYWORD, (FitsFileUtils.CalculateTextHash(lightFileName).ToLowerInvariant(), "MD5 of name of uncalibrated file") },
-                            { FitsFileUtils.UNCALIBRATED_FILE_DATA_MD5_KEYWORD, (FitsFileUtils.CalculateFileHash(light).ToLowerInvariant(), "MD5 of data of uncalibrated file") }
-                        };
-                    }
-                    catch (Exception ex)
-                    {
-                        throw new Exception($"Failed calculating hash from {light}: {ex.Message}", ex);
-                    }
-
-                    try
-                    {
-                        FitsFileUtils.MergeFitsHeader(calibratedLight, light, mergeExclusions, additionalTags);
+                        FitsFileUtils.MergeFitsHeader(calibratedLight, light, mergeExclusions, additionalTagsMap(light));
                     }
                     catch (Exception ex)
                     {

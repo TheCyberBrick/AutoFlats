@@ -2,7 +2,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-namespace AutoFlats
+namespace AutoFlats.Siril
 {
     public abstract class SirilCli
     {

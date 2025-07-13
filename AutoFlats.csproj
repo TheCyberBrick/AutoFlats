@@ -8,6 +8,23 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="PI\Calibrate.js" />
+    <None Remove="PI\Preamble.js" />
+    <None Remove="PI\Scripts\Convert.js" />
+    <None Remove="PI\Scripts\Stack.js" />
+    <None Remove="PI\Start.js" />
+    <None Remove="PI\Test.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="PI\Scripts\Convert.js" />
+    <EmbeddedResource Include="PI\Scripts\Stack.js" />
+    <EmbeddedResource Include="PI\Scripts\Start.js" />
+    <EmbeddedResource Include="PI\Scripts\Calibrate.js" />
+    <EmbeddedResource Include="PI\Scripts\Preamble.js" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="CommandLineParser" Version="2.9.1" />
     <PackageReference Include="CSharpFITS" Version="1.1.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />

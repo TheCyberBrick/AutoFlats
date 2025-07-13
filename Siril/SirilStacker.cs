@@ -1,6 +1,6 @@
 ﻿using System.Globalization;
 
-namespace AutoFlats
+namespace AutoFlats.Siril
 {
     public class SirilStacker : SirilCli, Stacker
     {
@@ -155,7 +155,7 @@ namespace AutoFlats
                 {
                     Directory.Delete(workingDir, true);
                 }
-                catch(Exception)
+                catch (Exception)
                 {
                 }
             }
